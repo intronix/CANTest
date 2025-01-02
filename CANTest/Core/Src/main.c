@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dac.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -42,9 +43,15 @@
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan;
 
+I2C_HandleTypeDef hi2c1;
+
 /* USER CODE BEGIN PV */
+CAN_TxHeaderTypeDef TxHeader;
 CAN_RxHeaderTypeDef RxHeader;
-uint8_t RxData[8];
+uint8_t TxData[8];
+uint8_t RxData[1];
+uint32_t TxMailbox;
+char can_data=0;
 uint32_t errorCounter = 0;
 uint8_t messageReceived = 0;  // Flag to indicate message received
 /* USER CODE END PV */
@@ -53,6 +60,7 @@ uint8_t messageReceived = 0;  // Flag to indicate message received
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -91,6 +99,9 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_I2C1_Init();
+  HAL_Delay(100);
+  MCP4725_Write(4095); // 2048 is half of 4095 (middle of DAC range)
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
   CAN_FilterTypeDef canfilterconfig;
@@ -119,6 +130,8 @@ int main(void)
   {
     Error_Handler();
   }
+
+  TxHeader.DLC=1;  //data length
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -138,6 +151,7 @@ int main(void)
       messageReceived = 0; // Clear message received flag
     }
     /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -221,6 +235,41 @@ static void MX_CAN_Init(void)
   HAL_NVIC_SetPriority(CAN1_SCE_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(CAN1_SCE_IRQn);
   /* USER CODE END CAN_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -237,6 +286,7 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
