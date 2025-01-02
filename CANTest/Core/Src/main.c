@@ -21,6 +21,7 @@
 #include "dac.h"
 #include "encoder.h"
 #include "buzzer.h"
+#include "can_handler.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -50,14 +51,7 @@ I2C_HandleTypeDef hi2c1;
 TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN PV */
-CAN_TxHeaderTypeDef TxHeader;
-CAN_RxHeaderTypeDef RxHeader;
-uint8_t TxData[8];
-uint8_t RxData[1];
-uint32_t TxMailbox;
-char can_data=0;
-uint32_t errorCounter = 0;
-uint8_t messageReceived = 0;  // Flag to indicate message received
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -117,34 +111,13 @@ int main(void)
   // Initialize DAC with max value
   MCP4725_Write(4095);
   
-  CAN_FilterTypeDef canfilterconfig;
-  
-  canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
-  canfilterconfig.FilterBank = 0;
-  canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-  canfilterconfig.FilterIdHigh = 0;
-  canfilterconfig.FilterIdLow = 0;
-  canfilterconfig.FilterMaskIdHigh = 0;
-  canfilterconfig.FilterMaskIdLow = 0;
-  canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
-  canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
-  
-  if(HAL_CAN_ConfigFilter(&hcan, &canfilterconfig) != HAL_OK)
+  // Initialize and start CAN
+  CAN_Handler_Init();
+  CAN_Config_Filter();
+  if(CAN_Start() != HAL_OK)
   {
     Error_Handler();
   }
-  
-  if(HAL_CAN_Start(&hcan) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  
-  if(HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_ERROR | CAN_IT_BUSOFF | CAN_IT_LAST_ERROR_CODE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  TxHeader.DLC=1;  //data length
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -155,18 +128,9 @@ int main(void)
     Encoder_Update();
     Check_Button();
     
-    uint32_t errorStatus = HAL_CAN_GetError(&hcan);
-    if(errorStatus != HAL_CAN_ERROR_NONE || errorCounter > 0)
-    {
-      HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_15);  // Toggle LED
-      HAL_Delay(100);  // 100ms delay for error indication
-    }
-    else if(messageReceived)
-    {
-      HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_15);  // Toggle LED
-      HAL_Delay(500);  // 500ms delay for message received indication
-      messageReceived = 0; // Clear message received flag
-    }
+    // Process CAN messages and errors
+    CAN_Handler_Process();
+    
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -386,32 +350,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-  if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
-  {
-    errorCounter = 0; // Reset error counter on successful reception
-    messageReceived = 1; // Set flag to indicate message received
-  }
-}
 
-void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
-{
-  errorCounter++; // Increment error counter
-  messageReceived = 0; // Clear message received flag on error
-}
-
-// CAN RX0 Interrupt Handler
-void USB_LP_CAN1_RX0_IRQHandler(void)
-{
-  HAL_CAN_IRQHandler(&hcan);
-}
-
-// CAN Error and Status Change Interrupt Handler
-void CAN1_SCE_IRQHandler(void)
-{
-  HAL_CAN_IRQHandler(&hcan);
-}
 /* USER CODE END 4 */
 
 /**
