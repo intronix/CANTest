@@ -4,11 +4,12 @@
 CAN_TxHeaderTypeDef TxHeader;
 CAN_RxHeaderTypeDef RxHeader;
 uint8_t TxData[8] = {0xDE, 0xAD, 0xBE, 0xEF}; // Initialize with the required data
-uint8_t RxData[1];
+uint8_t RxData[8];  // Buffer to store all 8 bytes of CAN data
 uint32_t TxMailbox;
 uint32_t errorCounter = 0;
 uint8_t messageReceived = 0;
 uint32_t can_tx_counter = 0;
+uint32_t can_msg_counter = 0;
 uint32_t current_baud_rate = 0;
 static uint32_t lastTxTime = 0;
 
@@ -80,15 +81,15 @@ void MX_CAN_Init(void)
     CAN_FilterTypeDef canfilterconfig;
 
     canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
-    canfilterconfig.FilterBank = 10;  // which filter bank to use from the assigned ones
+    canfilterconfig.FilterBank = 0;  // which filter bank to use from the assigned ones
     canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO1;
-    canfilterconfig.FilterIdHigh = 0x103<<5;
-    canfilterconfig.FilterIdLow = 0;
-    canfilterconfig.FilterMaskIdHigh = 0x103<<5;
-    canfilterconfig.FilterMaskIdLow = 0x0000;
+    canfilterconfig.FilterIdHigh = 0x0000;
+    canfilterconfig.FilterIdLow = 0x0000;
+    canfilterconfig.FilterMaskIdHigh = 0x0000;  // Accept all IDs
+    canfilterconfig.FilterMaskIdLow = 0x0000;   // Accept all IDs
     canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
     canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
-    canfilterconfig.SlaveStartFilterBank = 0;  // how many filters to assign to the CAN1 (master can)
+    canfilterconfig.SlaveStartFilterBank = 14;  // CAN1 has all filter banks
 
     if (HAL_CAN_ConfigFilter(&hcan, &canfilterconfig) != HAL_OK)
     {
@@ -114,6 +115,7 @@ void CAN_Handler_Init(void)
     errorCounter = 0;
     messageReceived = 0;
     can_tx_counter = 0;
+    can_msg_counter = 0;
     lastTxTime = 0;
 }
 
@@ -122,15 +124,15 @@ void CAN_Config_Filter(void)
     CAN_FilterTypeDef canfilterconfig;
 
     canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
-    canfilterconfig.FilterBank = 10;  // which filter bank to use from the assigned ones
+    canfilterconfig.FilterBank = 0;  // which filter bank to use from the assigned ones
     canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO1;
-    canfilterconfig.FilterIdHigh = 0x103<<5;
-    canfilterconfig.FilterIdLow = 0;
-    canfilterconfig.FilterMaskIdHigh = 0x103<<5;
-    canfilterconfig.FilterMaskIdLow = 0x0000;
+    canfilterconfig.FilterIdHigh = 0x0000;
+    canfilterconfig.FilterIdLow = 0x0000;
+    canfilterconfig.FilterMaskIdHigh = 0x0000;  // Accept all IDs
+    canfilterconfig.FilterMaskIdLow = 0x0000;   // Accept all IDs
     canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
     canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
-    canfilterconfig.SlaveStartFilterBank = 0;  // how many filters to assign to the CAN1 (master can)
+    canfilterconfig.SlaveStartFilterBank = 14;  // CAN1 has all filter banks
 
     if(HAL_CAN_ConfigFilter(&hcan, &canfilterconfig) != HAL_OK)
     {
@@ -154,7 +156,8 @@ HAL_StatusTypeDef CAN_Start(void)
                                                CAN_IT_ERROR_PASSIVE |
                                                CAN_IT_BUSOFF |
                                                CAN_IT_LAST_ERROR_CODE |
-                                               CAN_IT_ERROR);
+                                               CAN_IT_ERROR |
+                                               CAN_IT_RX_FIFO1_MSG_PENDING);
     return status;
 }
 
@@ -162,19 +165,6 @@ void CAN_Handler_Process(void)
 {
     // Update error counters
     CAN_Update_Error_Counters();
-    
-    // Check for received messages
-    if (HAL_CAN_GetRxFifoFillLevel(&hcan, CAN_RX_FIFO1) > 0)
-    {
-        if (HAL_CAN_GetRxMessage(&hcan, CAN_RX_FIFO1, &RxHeader, RxData) == HAL_OK)
-        {
-            messageReceived = 1;
-        }
-        else
-        {
-            errorCounter++;
-        }
-    }
     
     // Send periodic message
     CAN_Send_Periodic_Message();
@@ -201,27 +191,19 @@ uint32_t CAN_Get_Error_Status(void)
     return HAL_CAN_GetError(&hcan);
 }
 
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-    if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
+    /* Get RX message */
+    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader, RxData) == HAL_OK)
     {
-        errorCounter = 0;
-        messageReceived = 1;
+        can_msg_counter++;
+        // Process all received bytes here
+        // RxData[0] through RxData[7] now contain the received data
+        // RxHeader.DLC contains the actual number of data bytes (0-8)
     }
 }
 
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
 {
     errorCounter++;
-    messageReceived = 0;
-}
-
-void USB_LP_CAN1_RX0_IRQHandler(void)
-{
-    HAL_CAN_IRQHandler(&hcan);
-}
-
-void CAN1_SCE_IRQHandler(void)
-{
-    HAL_CAN_IRQHandler(&hcan);
 }

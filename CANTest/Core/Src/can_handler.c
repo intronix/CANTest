@@ -4,11 +4,13 @@
 CAN_TxHeaderTypeDef TxHeader;
 CAN_RxHeaderTypeDef RxHeader;
 uint8_t TxData[8] = {0xDE, 0xAD, 0xBE, 0xEF}; // Initialize with the required data
-uint8_t RxData[1];
+uint8_t RxData[8];  // Changed to 8 bytes to receive full CAN frame
 uint32_t TxMailbox;
 uint32_t txErrorCounter = 0;
 uint32_t rxErrorCounter = 0;
 uint32_t current_baud_rate = 0;
+uint32_t rxMessageCounter = 0;
+uint32_t txMessageCounter = 0;
 uint8_t messageReceived = 0;
 static uint32_t lastTxTime = 0;
 
@@ -29,6 +31,8 @@ void CAN_Handler_Init(void)
     
     txErrorCounter = 0;
     rxErrorCounter = 0;
+    rxMessageCounter = 0;
+    txMessageCounter = 0;
     messageReceived = 0;
     lastTxTime = 0;
     
@@ -80,16 +84,13 @@ HAL_StatusTypeDef CAN_Start(void)
 void CAN_Handler_Process(void)
 {
     uint32_t errorStatus = HAL_CAN_GetError(&hcan);
-    if(errorStatus != HAL_CAN_ERROR_NONE || txErrorCounter > 0 || rxErrorCounter > 0)
-    {
-        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_15);  // Toggle LED
-        HAL_Delay(100);  // 100ms delay for error indication
-    }
-    else if(messageReceived)
+    if(messageReceived)
     {
         HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_15);  // Toggle LED
         HAL_Delay(500);  // 500ms delay for message received indication
         messageReceived = 0; // Clear message received flag
+        txErrorCounter = 0;
+        rxErrorCounter = 0;
     }
     
     // Send periodic message
@@ -106,6 +107,7 @@ void CAN_Send_Periodic_Message(void)
         // Send the message
         if(HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) == HAL_OK)
         {
+            txMessageCounter++;  // Increment transmit counter on successful transmission
             lastTxTime = currentTime;
         }
         else
@@ -149,6 +151,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
     {
+        rxMessageCounter++;  // Increment receive counter on successful reception
         rxErrorCounter = 0; // Reset rx error counter on successful reception
         messageReceived = 1; // Set flag to indicate message received
     }

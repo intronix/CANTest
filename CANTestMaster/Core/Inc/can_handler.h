@@ -14,12 +14,13 @@ extern CAN_HandleTypeDef hcan;
 extern CAN_TxHeaderTypeDef TxHeader;
 extern CAN_RxHeaderTypeDef RxHeader;
 extern uint8_t TxData[8];
-extern uint8_t RxData[1];
+extern uint8_t RxData[8];
 extern uint32_t TxMailbox;
 extern uint32_t errorCounter;
 extern uint8_t messageReceived;
 extern uint32_t can_tx_counter;
 extern uint32_t current_baud_rate;
+extern uint32_t can_msg_counter;  // Global counter for received CAN messages
 
 // Error counter variables
 extern uint8_t can_tx_error_counter;

@@ -46,7 +46,7 @@ SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
 int LED_value = 0xFFFFFF;
-uint32_t can_msg_counter = 0;  // Global counter for received CAN messages
+extern uint32_t can_msg_counter;  // Global counter for received CAN messages
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/

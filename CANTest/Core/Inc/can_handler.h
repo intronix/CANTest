@@ -14,11 +14,13 @@ extern CAN_HandleTypeDef hcan;
 extern CAN_TxHeaderTypeDef TxHeader;
 extern CAN_RxHeaderTypeDef RxHeader;
 extern uint8_t TxData[8];
-extern uint8_t RxData[1];
+extern uint8_t RxData[8];  // Changed to 8 bytes to match implementation
 extern uint32_t TxMailbox;
 extern uint32_t txErrorCounter;
 extern uint32_t rxErrorCounter;
 extern uint32_t current_baud_rate;
+extern uint32_t rxMessageCounter;
+extern uint32_t txMessageCounter;
 extern uint8_t messageReceived;
 
 // Function prototypes
