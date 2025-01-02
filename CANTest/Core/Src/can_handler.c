@@ -3,11 +3,14 @@
 // Global variables
 CAN_TxHeaderTypeDef TxHeader;
 CAN_RxHeaderTypeDef RxHeader;
-uint8_t TxData[8];
+uint8_t TxData[8] = {0xDE, 0xAD, 0xBE, 0xEF}; // Initialize with the required data
 uint8_t RxData[1];
 uint32_t TxMailbox;
-uint32_t errorCounter = 0;
+uint32_t txErrorCounter = 0;
+uint32_t rxErrorCounter = 0;
+uint32_t current_baud_rate = 0;
 uint8_t messageReceived = 0;
+static uint32_t lastTxTime = 0;
 
 void CAN_Handler_Init(void)
 {
@@ -19,9 +22,18 @@ void CAN_Handler_Init(void)
     HAL_NVIC_EnableIRQ(CAN1_SCE_IRQn);
 
     // Initialize CAN parameters
-    TxHeader.DLC = 1;  // data length
-    errorCounter = 0;
+    TxHeader.DLC = 4;  // 4 bytes of data
+    TxHeader.IDE = CAN_ID_STD; // Standard ID
+    TxHeader.RTR = CAN_RTR_DATA; // Data frame
+    TxHeader.StdId = CAN_TX_ID; // ID 0x7E1
+    
+    txErrorCounter = 0;
+    rxErrorCounter = 0;
     messageReceived = 0;
+    lastTxTime = 0;
+    
+    // Calculate and store initial baud rate
+    CAN_Calculate_Baud_Rate();
 }
 
 void CAN_Config_Filter(void)
@@ -68,7 +80,7 @@ HAL_StatusTypeDef CAN_Start(void)
 void CAN_Handler_Process(void)
 {
     uint32_t errorStatus = HAL_CAN_GetError(&hcan);
-    if(errorStatus != HAL_CAN_ERROR_NONE || errorCounter > 0)
+    if(errorStatus != HAL_CAN_ERROR_NONE || txErrorCounter > 0 || rxErrorCounter > 0)
     {
         HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_15);  // Toggle LED
         HAL_Delay(100);  // 100ms delay for error indication
@@ -79,11 +91,57 @@ void CAN_Handler_Process(void)
         HAL_Delay(500);  // 500ms delay for message received indication
         messageReceived = 0; // Clear message received flag
     }
+    
+    // Send periodic message
+    CAN_Send_Periodic_Message();
+}
+
+void CAN_Send_Periodic_Message(void)
+{
+    uint32_t currentTime = HAL_GetTick();
+    
+    // Check if it's time to send the message
+    if(currentTime - lastTxTime >= CAN_TX_INTERVAL)
+    {
+        // Send the message
+        if(HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) == HAL_OK)
+        {
+            lastTxTime = currentTime;
+        }
+        else
+        {
+            txErrorCounter++; // Increment tx error counter
+        }
+    }
+}
+
+uint32_t CAN_Get_TxErrorCounter(void)
+{
+    return ((hcan.Instance->ESR & CAN_ESR_TEC) >> CAN_ESR_TEC_Pos);
+}
+
+uint32_t CAN_Get_RxErrorCounter(void)
+{
+    return ((hcan.Instance->ESR & CAN_ESR_REC) >> CAN_ESR_REC_Pos);
 }
 
 uint32_t CAN_Get_Error_Status(void)
 {
-    return HAL_CAN_GetError(&hcan);
+    return ((CAN_Get_TxErrorCounter() << 16) | CAN_Get_RxErrorCounter());
+}
+
+uint32_t CAN_Calculate_Baud_Rate(void)
+{
+    uint32_t pclk1 = HAL_RCC_GetPCLK1Freq();
+    uint32_t prescaler = hcan.Init.Prescaler;
+    uint32_t bs1 = ((hcan.Init.TimeSeg1 >> 16) & 0x0F) + 1;  // Convert BS1 value to actual TQ
+    uint32_t bs2 = ((hcan.Init.TimeSeg2 >> 20) & 0x07) + 1;  // Convert BS2 value to actual TQ
+    uint32_t total_tq = 1 + bs1 + bs2;  // 1 is for sync segment
+    
+    // Calculate baud rate: PCLK1 / (prescaler * total_tq)
+    current_baud_rate = pclk1 / (prescaler * total_tq);
+    
+    return current_baud_rate;
 }
 
 // HAL CAN Callbacks
@@ -91,14 +149,20 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
     {
-        errorCounter = 0; // Reset error counter on successful reception
+        rxErrorCounter = 0; // Reset rx error counter on successful reception
         messageReceived = 1; // Set flag to indicate message received
+    }
+    else
+    {
+        rxErrorCounter++; // Increment rx error counter
     }
 }
 
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
 {
-    errorCounter++; // Increment error counter
+    // Read hardware error counters
+    txErrorCounter = CAN_Get_TxErrorCounter();
+    rxErrorCounter = CAN_Get_RxErrorCounter();
     messageReceived = 0; // Clear message received flag on error
 }
 

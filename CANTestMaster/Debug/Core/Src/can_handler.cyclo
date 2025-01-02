@@ -1,0 +1,13 @@
+../Core/Src/can_handler.c:20:6:CAN_Update_Error_Counters	3
+../Core/Src/can_handler.c:38:10:CAN_Calculate_Baud_Rate	1
+../Core/Src/can_handler.c:52:6:MX_CAN_Init	3
+../Core/Src/can_handler.c:100:6:CAN_Handler_Init	1
+../Core/Src/can_handler.c:120:6:CAN_Config_Filter	2
+../Core/Src/can_handler.c:141:19:CAN_Start	2
+../Core/Src/can_handler.c:161:6:CAN_Handler_Process	3
+../Core/Src/can_handler.c:183:6:CAN_Send_Periodic_Message	3
+../Core/Src/can_handler.c:199:10:CAN_Get_Error_Status	1
+../Core/Src/can_handler.c:204:6:HAL_CAN_RxFifo0MsgPendingCallback	2
+../Core/Src/can_handler.c:213:6:HAL_CAN_ErrorCallback	1
+../Core/Src/can_handler.c:219:6:USB_LP_CAN1_RX0_IRQHandler	1
+../Core/Src/can_handler.c:224:6:CAN1_SCE_IRQHandler	1
