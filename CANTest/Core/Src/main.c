@@ -18,6 +18,9 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dac.h"
+#include "encoder.h"
+#include "buzzer.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -107,6 +110,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
   // Initialize encoder
   Encoder_Init(&htim1);
+  
+  // Initialize buzzer
+  Buzzer_Init();
   
   // Initialize DAC with max value
   MCP4725_Write(4095);
