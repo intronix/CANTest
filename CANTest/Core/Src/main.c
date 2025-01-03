@@ -19,11 +19,12 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "dac.h"
+#include <stdbool.h>
 #include "encoder.h"
-#include "buzzer.h"
-#include "can_handler.h"
 #include "eeprom.h"
 #include "led_control.h"
+#include "can_handler.h"
+#include "buzzer.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -49,12 +50,24 @@
 CAN_HandleTypeDef hcan;
 
 I2C_HandleTypeDef hi2c1;
-I2C_HandleTypeDef hi2c2;
 
 TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN PV */
-uint8_t eeprom_test_data;
+uint16_t eeprom_test_data;
+static uint8_t lastButtonState = GPIO_PIN_SET;
+static uint8_t buttonPressed = 0;
+static uint8_t longPressDetected = 0;
+static uint32_t pressStartTime = 0;
+bool isCalibrationMode = false;
+
+// Calibration button defines (using same pin as LED control for actions)
+#define CAL_BUTTON_PIN BUTTON_PIN
+#define CAL_BUTTON_PORT BUTTON_PORT
+
+// Calibration entry pin (PB2)
+#define CAL_ENTRY_PIN GPIO_PIN_2
+#define CAL_ENTRY_PORT GPIOB
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,7 +75,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_I2C2_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -87,7 +99,6 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -105,18 +116,17 @@ int main(void)
   MX_GPIO_Init();
   MX_CAN_Init();
   MX_I2C1_Init();
-  MX_I2C2_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   // Initialize encoder
   Encoder_Init(&htim1);
-  
+
   // Initialize buzzer
   Buzzer_Init();
-  
+
   // Initialize DAC with off value
-  MCP4725_Write(LED_OFF_VALUE);
-  
+  MCP4725_Write(0); // Start with DAC at 0
+
   // Initialize and start CAN
   CAN_Handler_Init();
   CAN_Config_Filter();
@@ -124,27 +134,45 @@ int main(void)
   {
     Error_Handler();
   }
-  
+
   // Initialize EEPROM
   EEPROM_Init();
 
+  // Check if PB2 is held low during startup for calibration mode
+  HAL_Delay(100); // Small delay to ensure pin state is stable
+
+  if(HAL_GPIO_ReadPin(CAL_ENTRY_PORT, CAL_ENTRY_PIN) == GPIO_PIN_RESET) {
+      isCalibrationMode = true;
+      Encoder_SetMode(CALIBRATE_LOW);
+      buttonPressed = 0;
+      longPressDetected = 0;
+  }
+  
   // Read back the EEPROM data
-  eeprom_test_data = EEPROM_ReadByte(0x00);
+  eeprom_test_data = EEPROM_ReadWord(0x00);
+  
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    // Update encoder and check button
-    Encoder_Update();
-    Check_Button();
-    
-    // Process CAN messages and errors
-    //CAN_Handler_Process();
-
+    if(isCalibrationMode) {
+        // Update encoder in calibration mode
+        Encoder_Update();
+        Check_Calibration_Button();
+        // Update DAC value in both modes
+        uint16_t newDacValue = Encoder_GetDACValue();
+        MCP4725_Write(newDacValue);
+    }
+    else {
+        // Normal operation mode
+        Encoder_Update();
+        Check_Button();
+        //CAN_Handler_Process();
+    }
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -266,40 +294,6 @@ static void MX_I2C1_Init(void)
 }
 
 /**
-  * @brief I2C2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C2_Init(void)
-{
-
-  /* USER CODE BEGIN I2C2_Init 0 */
-
-  /* USER CODE END I2C2_Init 0 */
-
-  /* USER CODE BEGIN I2C2_Init 1 */
-
-  /* USER CODE END I2C2_Init 1 */
-  hi2c2.Instance = I2C2;
-  hi2c2.Init.ClockSpeed = 100000;
-  hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c2.Init.OwnAddress1 = 0;
-  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c2.Init.OwnAddress2 = 0;
-  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C2_Init 2 */
-
-  /* USER CODE END I2C2_Init 2 */
-
-}
-
-/**
   * @brief TIM1 Initialization Function
   * @param None
   * @retval None
@@ -378,6 +372,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pin : PA10 */
   GPIO_InitStruct.Pin = GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -396,7 +396,76 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void Calibration_Single_Click(void)
+{
+    // Only handle button in CALIBRATE_HIGH mode
+    if (encoderMode == CALIBRATE_HIGH) {
+        Encoder_SaveCalibration();
+        Encoder_SetMode(CALIBRATE_LOW);
+    }
+}
 
+void Calibration_Long_Press(void)
+{
+    // Only allow long press in CALIBRATE_HIGH mode
+    if (encoderMode == CALIBRATE_HIGH) {
+        // Save calibration and halt until power cycle
+        Encoder_SaveCalibration();
+        while(1) {
+            // System halted - requires power cycle
+            HAL_Delay(1000);
+        }
+    }
+}
+
+void Check_Calibration_Button(void)
+{
+    uint8_t currentButtonState = HAL_GPIO_ReadPin(CAL_BUTTON_PORT, CAL_BUTTON_PIN);
+
+    // Debounce logic
+    if (currentButtonState != lastButtonState)
+    {
+        HAL_Delay(DEBOUNCE_DELAY);
+        currentButtonState = HAL_GPIO_ReadPin(CAL_BUTTON_PORT, CAL_BUTTON_PIN);
+    }
+
+    // Button just pressed
+    if (currentButtonState == GPIO_PIN_RESET && lastButtonState == GPIO_PIN_SET)
+    {
+        buttonPressed = 1;
+        longPressDetected = 0;
+        pressStartTime = HAL_GetTick();
+    }
+    // Button just released
+    else if (currentButtonState == GPIO_PIN_SET && lastButtonState == GPIO_PIN_RESET)
+    {
+        if (!longPressDetected && buttonPressed)
+        {
+            if (encoderMode == CALIBRATE_LOW) {
+                // When button is released in LOW mode, save and switch to HIGH
+                Encoder_SaveCalibration();
+                Encoder_SetMode(CALIBRATE_HIGH);
+            } else {
+                Calibration_Single_Click();
+            }
+        }
+        buttonPressed = 0;
+        longPressDetected = 0;
+    }
+    // Button is being held down
+    else if (currentButtonState == GPIO_PIN_RESET && buttonPressed && !longPressDetected)
+    {
+        uint32_t pressDuration = HAL_GetTick() - pressStartTime;
+        // Only check for long press if in CALIBRATE_HIGH mode
+        if (pressDuration > LONG_PRESS_DELAY && encoderMode == CALIBRATE_HIGH)
+        {
+            Calibration_Long_Press();
+            longPressDetected = 1;
+        }
+    }
+
+    lastButtonState = currentButtonState;
+}
 /* USER CODE END 4 */
 
 /**

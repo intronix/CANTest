@@ -61,7 +61,7 @@ void Single_Click_Action(void)
     if (!ledState)
     {
         // Set DAC to current encoder value
-        MCP4725_Write(Encoder_GetDACValue());
+        MCP4725_Write(dacLowValue);
         ledState = 1;
     }
 }

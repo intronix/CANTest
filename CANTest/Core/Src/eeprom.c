@@ -8,25 +8,75 @@ void EEPROM_Init(void)
     HAL_Delay(10);  // Small delay for EEPROM to be ready after power-up
 }
 
-HAL_StatusTypeDef EEPROM_WriteByte(uint16_t address, uint8_t data)
+HAL_StatusTypeDef EEPROM_WriteWord(uint16_t address, uint16_t data)
 {
+    uint8_t buffer[3];
     HAL_StatusTypeDef status;
     
-    // Write byte to EEPROM
-    status = HAL_I2C_Mem_Write(&hi2c1, EEPROM_ADDR, address, I2C_MEMADD_SIZE_8BIT, &data, 1, 1000);
+    // Write low byte
+    buffer[0] = address & 0xFF;  // Address byte
+    buffer[1] = data & 0xFF;     // Low byte
     
-    // Wait for write cycle to complete (typical write cycle time is 5ms)
-    HAL_Delay(5);
+    status = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR, buffer, 2, HAL_MAX_DELAY);
+    if (status != HAL_OK) return status;
     
-    return status;
+    HAL_Delay(5); // Wait for write to complete
+    
+    // Write high byte
+    buffer[0] = (address + 1) & 0xFF;  // Address byte
+    buffer[1] = (data >> 8) & 0xFF;    // High byte
+    
+    status = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR, buffer, 2, HAL_MAX_DELAY);
+    if (status != HAL_OK) return status;
+    
+    HAL_Delay(5); // Wait for write to complete
+    
+    return HAL_OK;
+}
+
+uint16_t EEPROM_ReadWord(uint16_t address)
+{
+    uint8_t buffer[2];
+    uint16_t data = 0;
+    
+    // Read low byte
+    buffer[0] = address & 0xFF;  // Address byte
+    HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR, buffer, 1, HAL_MAX_DELAY);
+    HAL_I2C_Master_Receive(&hi2c1, EEPROM_ADDR, &buffer[1], 1, HAL_MAX_DELAY);
+    data = buffer[1];
+    
+    HAL_Delay(1); // Small delay between reads
+    
+    // Read high byte
+    buffer[0] = (address + 1) & 0xFF;  // Address byte
+    HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR, buffer, 1, HAL_MAX_DELAY);
+    HAL_I2C_Master_Receive(&hi2c1, EEPROM_ADDR, &buffer[1], 1, HAL_MAX_DELAY);
+    data |= (uint16_t)buffer[1] << 8;
+    
+    return data;
+}
+
+// These functions are not used but kept for compatibility
+HAL_StatusTypeDef EEPROM_WriteByte(uint16_t address, uint8_t data)
+{
+    uint8_t buffer[2];
+    buffer[0] = address & 0xFF;  // Address byte
+    buffer[1] = data;           // Data byte
+    
+    HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR, buffer, 2, HAL_MAX_DELAY);
+    if (status != HAL_OK) return status;
+    
+    HAL_Delay(5); // Wait for write to complete
+    return HAL_OK;
 }
 
 uint8_t EEPROM_ReadByte(uint16_t address)
 {
-    uint8_t data;
+    uint8_t buffer[2];
     
-    // Read byte from EEPROM
-    HAL_I2C_Mem_Read(&hi2c1, EEPROM_ADDR, address, I2C_MEMADD_SIZE_8BIT, &data, 1, 1000);
+    buffer[0] = address & 0xFF;  // Address byte
+    HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR, buffer, 1, HAL_MAX_DELAY);
+    HAL_I2C_Master_Receive(&hi2c1, EEPROM_ADDR, &buffer[1], 1, HAL_MAX_DELAY);
     
-    return data;
+    return buffer[1];
 }

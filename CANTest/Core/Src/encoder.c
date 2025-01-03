@@ -1,15 +1,20 @@
 #include "encoder.h"
 #include "dac.h"
 #include "led_control.h"
+#include "eeprom.h"
+#include <stdlib.h>
 
 // Global variables
 int16_t encoderPosition = 0;    // Current step (0-19)
 uint16_t dacValue = DAC_MIN_VALUE;  // Current DAC value
+uint16_t dacLowValue = DAC_MIN_VALUE;
+uint16_t dacHighValue = DAC_MAX_VALUE;
+EncoderMode_t encoderMode = NORMAL_MODE;
+
+static TIM_HandleTypeDef *encoderTimer;
 static uint16_t lastCount = 0;    // Last timer count value
 static uint16_t lastPosition = 0;  // Last valid position
 static int8_t accumulatedCounts = 0;  // Accumulated counts for step detection
-
-static TIM_HandleTypeDef *encoderTimer;
 
 void Encoder_Init(TIM_HandleTypeDef *htim)
 {
@@ -19,7 +24,12 @@ void Encoder_Init(TIM_HandleTypeDef *htim)
     // Initialize position and DAC value
     encoderPosition = 0;
     lastPosition = 0;
-    dacValue = DAC_MIN_VALUE;
+    
+    // Load calibration values first
+    Encoder_LoadCalibration();
+    
+    // Set initial DAC value to dacLowValue in normal mode
+    dacValue = dacLowValue;
     accumulatedCounts = 0;
     
     // Reset counter
@@ -70,8 +80,19 @@ void Encoder_Update(void)
                 encoderPosition = newPosition;
                 lastPosition = newPosition;
                 
-                // Calculate new DAC value
-                dacValue = DAC_MIN_VALUE + (encoderPosition * DAC_STEP_SIZE);
+                // Update DAC value based on mode
+                if (encoderMode == NORMAL_MODE)
+                {
+                    // Map encoder position to calibrated range (dacLowValue to dacHighValue)
+                    uint32_t range = dacHighValue - dacLowValue;
+                    uint32_t step = (range * encoderPosition) / (ENCODER_STEPS - 1);
+                    dacValue = dacLowValue + step;
+                }
+                else // Calibration modes
+                {
+                    // Direct mapping to full DAC range for calibration
+                    dacValue = (DAC_MAX_VALUE * encoderPosition) / (ENCODER_STEPS - 1);
+                }
                 
                 // Ensure DAC value is within bounds
                 if (dacValue > DAC_MAX_VALUE)
@@ -99,4 +120,58 @@ void Encoder_Update(void)
 uint16_t Encoder_GetDACValue(void)
 {
     return dacValue;
+}
+
+void Encoder_LoadCalibration(void) {
+    // Read calibration values from EEPROM
+    dacLowValue = EEPROM_ReadWord(EEPROM_DAC_LOW_ADDR);
+    dacHighValue = EEPROM_ReadWord(EEPROM_DAC_HIGH_ADDR);
+    
+    // Validate read values and ensure they're within bounds
+    if (dacLowValue > DAC_MAX_VALUE) {
+        dacLowValue = DAC_MIN_VALUE;
+    }
+    if (dacHighValue > DAC_MAX_VALUE) {
+        dacHighValue = DAC_MAX_VALUE;
+    }
+    if (dacLowValue >= dacHighValue) {
+        dacLowValue = DAC_MIN_VALUE;
+        dacHighValue = DAC_MAX_VALUE;
+    }
+}
+
+void Encoder_SaveCalibration(void) {
+    // Ensure DAC value is within bounds before saving
+    if (dacValue > DAC_MAX_VALUE) {
+        dacValue = DAC_MAX_VALUE;
+    }
+    if (dacValue < DAC_MIN_VALUE) {
+        dacValue = DAC_MIN_VALUE;
+    }
+    
+    // Save current DAC value to appropriate calibration
+    if (encoderMode == CALIBRATE_LOW) {
+        dacLowValue = dacValue;
+        EEPROM_WriteWord(EEPROM_DAC_LOW_ADDR, dacLowValue);
+    } else if (encoderMode == CALIBRATE_HIGH) {
+        dacHighValue = dacValue;
+        EEPROM_WriteWord(EEPROM_DAC_HIGH_ADDR, dacHighValue);
+    }
+}
+
+void Encoder_SetMode(EncoderMode_t mode) {
+    encoderMode = mode;
+    // Reset encoder position when changing modes
+    __HAL_TIM_SET_COUNTER(encoderTimer, 0);
+    encoderPosition = 0;
+    lastPosition = 0;
+    lastCount = 0;
+    accumulatedCounts = 0;
+    
+    // Set initial DAC value based on mode
+    if (mode == NORMAL_MODE) {
+        dacValue = dacLowValue; // Start from low value in normal mode
+    } else {
+        dacValue = DAC_MIN_VALUE; // Start from min in calibration mode
+    }
 }
