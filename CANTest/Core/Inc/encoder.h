@@ -11,7 +11,10 @@
 // DAC value range
 #define DAC_MIN_VALUE 0      // Absolute minimum DAC value
 #define DAC_MAX_VALUE 4095   // Absolute maximum DAC value
-#define DAC_STEP_SIZE ((DAC_MAX_VALUE - DAC_MIN_VALUE) / (ENCODER_STEPS - 1))  // Step size for normal mode
+
+// Buzzer timing definitions
+#define BUZZ_ON_TIME 100    // Duration of each buzz ON period in ms
+#define BUZZ_OFF_TIME 100   // Duration of each buzz OFF period in ms
 
 // Calibration mode states
 typedef enum {

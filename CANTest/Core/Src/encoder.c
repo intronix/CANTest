@@ -22,6 +22,8 @@ static uint32_t lastBuzzTime = 0;
 static uint8_t buzzCount = 0;
 static uint8_t buzzState = 0;
 static uint8_t buzzerActive = 0;
+static uint8_t isCalibrationBuzz = 0;  // Flag for calibration buzz pattern
+static uint8_t buzzOff = 0;  // Flag for buzz off state
 
 void Encoder_Init(TIM_HandleTypeDef *htim)
 {
@@ -44,74 +46,118 @@ void Encoder_Init(TIM_HandleTypeDef *htim)
     buzzCount = 0;
     buzzState = 0;
     buzzerActive = 0;
+    isCalibrationBuzz = 0;
+    buzzOff = 0;
     
     // Reset counter
     __HAL_TIM_SET_COUNTER(encoderTimer, 0);
     lastCount = 0;
 }
 
-void Process_Buzzer(void)
+static void Start_Calibration_Buzz(void)
 {
-    if (!buzzerActive) return;
-    
-    uint32_t currentTime = HAL_GetTick();
-    
-    // Check if it's time for next buzz action
-    if (currentTime - lastBuzzTime >= 100)  // 100ms interval
+    if (!buzzerActive)
     {
-        if (encoderPosition == 0)  // Single ON-OFF for position 0
-        {
-            if (buzzCount == 0)
-            {
-                Buzzer_On();
-                buzzCount++;
-            }
-            else if (buzzCount == 1)
-            {
-                Buzzer_Off();
-                buzzCount = 0;
-                buzzerActive = 0;  // Sequence complete
-            }
-        }
-        else if (encoderPosition == ENCODER_STEPS - 1)  // ON-OFF-ON-OFF for max position
-        {
-            switch(buzzCount)
-            {
-                case 0:  // First ON
-                    Buzzer_On();
-                    break;
-                case 1:  // First OFF
-                    Buzzer_Off();
-                    break;
-                case 2:  // Second ON
-                    Buzzer_On();
-                    break;
-                case 3:  // Second OFF
-                    Buzzer_Off();
-                    buzzerActive = 0;  // Sequence complete
-                    buzzCount = 0;
-                    return;
-            }
-            buzzCount++;
-        }
-        lastBuzzTime = currentTime;
+        buzzerActive = 1;
+        isCalibrationBuzz = 1;
+        Buzzer_On();
+        lastBuzzTime = HAL_GetTick();
     }
 }
 
-void Start_Buzz_Sequence(uint8_t position)
+static void Process_Buzzer(void)
 {
-    if (!buzzerActive)  // Only start if not already buzzing
+    uint32_t currentTime = HAL_GetTick();
+    
+    if (buzzerActive)
+    {
+        // Handle calibration buzz
+        if (isCalibrationBuzz)
+        {
+            if (currentTime - lastBuzzTime >= 1000)  // 1 second buzz
+            {
+                Buzzer_Off();
+                buzzerActive = 0;
+                isCalibrationBuzz = 0;
+            }
+            return;
+        }
+
+        // If buzzer has been on too long (safety timeout)
+        if (currentTime - lastBuzzTime > 2000)  // 2 second safety timeout
+        {
+            Buzzer_Off();
+            buzzerActive = 0;
+            buzzCount = 0;
+            return;
+        }
+
+        // Handle double buzz sequence
+        if (buzzCount > 0)
+        {
+            if (currentTime - lastBuzzTime >= BUZZ_ON_TIME && !buzzOff)
+            {
+                Buzzer_Off();
+                lastBuzzTime = currentTime;
+                buzzOff = 1;
+            }
+            else if (currentTime - lastBuzzTime >= BUZZ_OFF_TIME && buzzOff)
+            {
+                if (buzzCount > 1)
+                {
+                    Buzzer_On();
+                    lastBuzzTime = currentTime;
+                    buzzCount--;
+                    buzzOff = 0;
+                }
+                else
+                {
+                    buzzerActive = 0;
+                    buzzCount = 0;
+                }
+            }
+        }
+    }
+}
+
+static void Start_Buzz_Sequence(int16_t position)
+{
+    static uint32_t lastBuzzTriggerTime = 0;
+    uint32_t currentTime = HAL_GetTick();
+    
+    // Debounce buzzer triggers - prevent retriggering within 500ms
+    if (currentTime - lastBuzzTriggerTime < 500)
+    {
+        return;
+    }
+    
+    // Only start new sequence if buzzer is not active
+    if (!buzzerActive)
     {
         buzzerActive = 1;
-        buzzCount = 0;
-        buzzState = 0;
-        lastBuzzTime = HAL_GetTick();
+        buzzOff = 0;
+        lastBuzzTime = currentTime;
+        lastBuzzTriggerTime = currentTime;
+        
+        if (position == 0)
+        {
+            // Single buzz for position 0
+            Buzzer_On();
+            buzzCount = 1;
+        }
+        else if (position == ENCODER_STEPS - 1)
+        {
+            // Double buzz for max position
+            Buzzer_On();
+            buzzCount = 2;
+        }
     }
 }
 
 void Encoder_Update(void)
 {
     uint16_t counter = __HAL_TIM_GET_COUNTER(encoderTimer);
+    static uint16_t lastDacValue = 0;
     
     // Process any active buzzer sequence
     Process_Buzzer();
@@ -152,22 +198,28 @@ void Encoder_Update(void)
             // Only update if within bounds
             if (newPosition >= 0 && newPosition < ENCODER_STEPS)
             {
-                int16_t oldPosition = encoderPosition;
                 encoderPosition = newPosition;
                 lastPosition = newPosition;
                 
                 // Update DAC value based on mode
                 if (encoderMode == NORMAL_MODE)
                 {
-                    // Map encoder position to calibrated range (dacLowValue to dacHighValue)
-                    uint32_t range = dacHighValue - dacLowValue;
-                    uint32_t step = (range * encoderPosition) / (ENCODER_STEPS - 1);
-                    dacValue = dacLowValue + step;
-                    
-                    // Check if we've reached min or max position
-                    if (encoderPosition == 0 || encoderPosition == ENCODER_STEPS - 1)
+                    if (encoderPosition == 0)
                     {
-                        Start_Buzz_Sequence(encoderPosition);
+                        // Force DAC to 0 at position 0
+                        dacValue = 0;
+                    }
+                    else if (encoderPosition == 1)
+                    {
+                        // Force DAC to dacLowValue at position 1
+                        dacValue = dacLowValue;
+                    }
+                    else
+                    {
+                        // Map encoder position (2 to 19) to calibrated range (dacLowValue to dacHighValue)
+                        uint32_t range = dacHighValue - dacLowValue;
+                        uint32_t step = (range * (encoderPosition - 1)) / (ENCODER_STEPS - 2);
+                        dacValue = dacLowValue + step;
                     }
                 }
                 else // Calibration modes
@@ -181,6 +233,12 @@ void Encoder_Update(void)
                     dacValue = DAC_MAX_VALUE;
                 else if (dacValue < DAC_MIN_VALUE)
                     dacValue = DAC_MIN_VALUE;
+                
+                // Check if we've reached min or max position for buzzer feedback
+                if (encoderPosition == 0 || encoderPosition == ENCODER_STEPS - 1)
+                {
+                    Start_Buzz_Sequence(encoderPosition);
+                }
             }
             else
             {
@@ -196,6 +254,12 @@ void Encoder_Update(void)
         
         // Update last count
         lastCount = counter;
+    }
+    
+    // Check if we're at position 1 and DAC value needs to be corrected
+    if (encoderPosition == 1 && dacValue != dacLowValue)
+    {
+        dacValue = dacLowValue;
     }
 }
 
@@ -235,9 +299,11 @@ void Encoder_SaveCalibration(void) {
     if (encoderMode == CALIBRATE_LOW) {
         dacLowValue = dacValue;
         EEPROM_WriteWord(EEPROM_DAC_LOW_ADDR, dacLowValue);
+        Start_Calibration_Buzz();  // Long buzz for calibration set
     } else if (encoderMode == CALIBRATE_HIGH) {
         dacHighValue = dacValue;
         EEPROM_WriteWord(EEPROM_DAC_HIGH_ADDR, dacHighValue);
+        Start_Calibration_Buzz();  // Long buzz for calibration set
     }
 }
 

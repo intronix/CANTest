@@ -1,11 +1,12 @@
 #include "led_control.h"
+#include "dac.h"
 #include "encoder.h"
 
 // Global variables
+uint8_t outputLedState = 0;  // Renamed from ledState
+uint32_t pressStartTime = 0;
 uint8_t buttonPressed = 0;
 uint8_t longPressDetected = 0;
-uint32_t pressStartTime = 0;
-uint8_t ledState = 0;  // Start with LED off
 
 void Check_Button(void)
 {
@@ -47,7 +48,7 @@ void Check_Button(void)
     }
 
     // Update DAC value if LED is on
-    if (ledState)
+    if (outputLedState)
     {
         MCP4725_Write(Encoder_GetDACValue());
     }
@@ -57,22 +58,15 @@ void Check_Button(void)
 
 void Single_Click_Action(void)
 {
-    // Only take action if LED is currently off
-    if (!ledState)
-    {
-        // Set DAC to current encoder value
-        MCP4725_Write(dacLowValue);
-        ledState = 1;
-    }
+    outputLedState = 1;
+   
+    MCP4725_Write(dacLowValue);
+    if(encoderPosition == 0)
+        encoderPosition = 1;
 }
 
 void Long_Press_Action(void)
 {
-    // Only take action if LED is currently on
-    if (ledState)
-    {
-    	// Set DAC to LED off value
-        MCP4725_Write(LED_OFF_VALUE);
-        ledState = 0;
-    }
+    MCP4725_Write(LED_OFF_VALUE);
+    outputLedState = 0;
 }

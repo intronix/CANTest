@@ -114,8 +114,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_CAN_Init();
   MX_I2C1_Init();
+  // Initialize DAC with off value
+  MCP4725_Write(0); // Start with DAC at 0
+  MX_CAN_Init();
+
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   // Initialize encoder
@@ -123,9 +126,6 @@ int main(void)
 
   // Initialize buzzer
   Buzzer_Init();
-
-  // Initialize DAC with off value
-  MCP4725_Write(0); // Start with DAC at 0
 
   // Initialize and start CAN
   CAN_Handler_Init();
@@ -410,6 +410,7 @@ void Calibration_Long_Press(void)
         while(1) {
             // System halted - requires power cycle
             HAL_Delay(1000);
+            Buzzer_Off();
         }
     }
 }

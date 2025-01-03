@@ -13,7 +13,7 @@
 #define LED_OFF_VALUE 0     // Value when LED is turned off
 
 // Global variables
-extern uint8_t ledState;
+extern uint8_t outputLedState;
 
 // Function prototypes
 void Check_Button(void);
