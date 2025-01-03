@@ -1,12 +1,11 @@
 #include "encoder.h"
 #include "dac.h"
+#include "led_control.h"
 
 // Global variables
-int16_t encoderPosition = 0;
-int16_t lastPosition = 0;
-uint8_t buttonPressed = 0;
-uint8_t longPressDetected = 0;
-uint32_t pressStartTime = 0;
+int16_t encoderPosition = 0;    // Current step (0-19)
+uint16_t dacValue = DAC_MIN_VALUE;  // Current DAC value
+static uint16_t lastCount = 0;    // Last timer count value
 
 static TIM_HandleTypeDef *encoderTimer;
 
@@ -14,84 +13,76 @@ void Encoder_Init(TIM_HandleTypeDef *htim)
 {
     encoderTimer = htim;
     HAL_TIM_Encoder_Start(encoderTimer, TIM_CHANNEL_ALL);
+    
+    // Initialize position and DAC value
     encoderPosition = 0;
-    lastPosition = 0;
+    dacValue = DAC_MIN_VALUE;
+    
+    // Reset counter
+    __HAL_TIM_SET_COUNTER(encoderTimer, 0);
+    lastCount = 0;
 }
 
 void Encoder_Update(void)
 {
-    // Read current encoder position
-    encoderPosition = (int16_t)((int16_t)(__HAL_TIM_GET_COUNTER(encoderTimer))/4);
+    uint16_t counter = __HAL_TIM_GET_COUNTER(encoderTimer);
     
-    // Limit checking
-    if(encoderPosition > ENCODER_MAX_VALUE)
+    // Check for counter change
+    if (counter != lastCount)
     {
-        __HAL_TIM_SET_COUNTER(encoderTimer, (uint16_t)ENCODER_MAX_VALUE*4);
-        encoderPosition = ENCODER_MAX_VALUE;
-    }
-    else if(encoderPosition < ENCODER_MIN_VALUE)
-    {
-        __HAL_TIM_SET_COUNTER(encoderTimer, (uint16_t)ENCODER_MIN_VALUE);
-        encoderPosition = ENCODER_MIN_VALUE;
-    }
-
-    // Update DAC if position changed
-    if (encoderPosition != lastPosition)
-    {
-        MCP4725_Write(encoderPosition);
-        lastPosition = encoderPosition;
-    }
-}
-
-void Check_Button(void)
-{
-    static uint8_t lastButtonState = GPIO_PIN_SET; // Last known button state
-    uint8_t currentButtonState = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN);
-
-    // Debounce logic
-    if (currentButtonState != lastButtonState)
-    {
-        HAL_Delay(DEBOUNCE_DELAY);
-        currentButtonState = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN);
-    }
-
-    if (currentButtonState == GPIO_PIN_RESET && lastButtonState == GPIO_PIN_SET)
-    {
-        // Button pressed
-        buttonPressed = 1;
-        longPressDetected = 0;
-        pressStartTime = HAL_GetTick();
-    }
-    else if (currentButtonState == GPIO_PIN_SET && lastButtonState == GPIO_PIN_RESET)
-    {
-        // Button released
-        if (!longPressDetected && buttonPressed)
+        // Determine rotation direction
+        int8_t direction;
+        
+        // Handle counter overflow/underflow
+        if (counter > lastCount)
         {
-            Single_Click_Action();
+            if (counter - lastCount > 32768) // Overflow, actually went backwards
+                direction = -1;
+            else
+                direction = 1;
         }
-        buttonPressed = 0;
-    }
-    else if (buttonPressed && !longPressDetected)
-    {
-        // Check for long press
-        if (HAL_GetTick() - pressStartTime > LONG_PRESS_DELAY)
+        else
         {
-            Long_Press_Action();
-            longPressDetected = 1;
+            if (lastCount - counter > 32768) // Underflow, actually went forwards
+                direction = 1;
+            else
+                direction = -1;
         }
+        
+        // Check if we're at limits and trying to go the wrong way
+        if ((encoderPosition == 0 && direction < 0) || 
+            (encoderPosition >= ENCODER_STEPS-1 && direction > 0))
+        {
+            // Reset counter to current position
+            __HAL_TIM_SET_COUNTER(encoderTimer, encoderPosition * ENCODER_COUNTS_PER_STEP);
+            lastCount = encoderPosition * ENCODER_COUNTS_PER_STEP;
+            return;
+        }
+        
+        // Calculate new position
+        int16_t newPosition = encoderPosition + direction;
+        
+        // Update position if within bounds
+        if (newPosition >= 0 && newPosition < ENCODER_STEPS)
+        {
+            encoderPosition = newPosition;
+            
+            // Calculate new DAC value
+            dacValue = DAC_MIN_VALUE + (encoderPosition * DAC_STEP_SIZE);
+            
+            // Ensure DAC value is within bounds
+            if (dacValue > DAC_MAX_VALUE)
+                dacValue = DAC_MAX_VALUE;
+            else if (dacValue < DAC_MIN_VALUE)
+                dacValue = DAC_MIN_VALUE;
+        }
+        
+        // Update last count
+        lastCount = __HAL_TIM_GET_COUNTER(encoderTimer);
     }
-
-    lastButtonState = currentButtonState;
 }
 
-void Single_Click_Action(void)
+uint16_t Encoder_GetDACValue(void)
 {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
-}
-
-void Long_Press_Action(void)
-{
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+    return dacValue;
 }

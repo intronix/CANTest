@@ -3,28 +3,24 @@
 
 #include "main.h"
 
-// Encoder limits for 12-bit DAC
-#define ENCODER_MAX_VALUE 4094  // Maximum DAC value (12-bit - 1)
-#define ENCODER_MIN_VALUE 0     // Minimum DAC value
+// Encoder physical properties
+#define ENCODER_STEPS 20        // Number of physical steps per rotation
+#define ENCODER_COUNTS_PER_STEP 4  // Timer counts per encoder step
 
-// Button defines
-#define BUTTON_PIN GPIO_PIN_10
-#define BUTTON_PORT GPIOA
-#define DEBOUNCE_DELAY 50    // 50 ms debounce
-#define LONG_PRESS_DELAY 500 // 500 ms for a long press
+// DAC value range
+#define DAC_MIN_VALUE 600   // Minimum DAC value for LED
+#define DAC_MAX_VALUE 3160  // Maximum DAC value for LED
+
+// Calculate step size for DAC values
+#define DAC_STEP_SIZE ((DAC_MAX_VALUE - DAC_MIN_VALUE) / ENCODER_STEPS)
 
 // Global variables to be accessed from main
-extern int16_t encoderPosition;
-extern int16_t lastPosition;
-extern uint8_t buttonPressed;
-extern uint8_t longPressDetected;
-extern uint32_t pressStartTime;
+extern int16_t encoderPosition;  // Current step (0-19)
+extern uint16_t dacValue;       // Current DAC value (600-3160)
 
 // Function prototypes
 void Encoder_Init(TIM_HandleTypeDef *htim);
 void Encoder_Update(void);
-void Check_Button(void);
-void Single_Click_Action(void);
-void Long_Press_Action(void);
+uint16_t Encoder_GetDACValue(void);
 
 #endif /* ENCODER_H */

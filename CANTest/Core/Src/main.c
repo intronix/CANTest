@@ -23,6 +23,7 @@
 #include "buzzer.h"
 #include "can_handler.h"
 #include "eeprom.h"
+#include "led_control.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -87,7 +88,7 @@ int main(void)
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
 
-	HAL_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -113,8 +114,8 @@ int main(void)
   // Initialize buzzer
   Buzzer_Init();
   
-  // Initialize DAC with max value
-  MCP4725_Write(0);
+  // Initialize DAC with off value
+  MCP4725_Write(LED_OFF_VALUE);
   
   // Initialize and start CAN
   CAN_Handler_Init();
@@ -127,10 +128,7 @@ int main(void)
   // Initialize EEPROM
   EEPROM_Init();
 
-  // Write test data to EEPROM
-  //EEPROM_WriteByte(0x00, 0x55);  // Write 0x55 to address 0x00
-  
-  // Read back the data
+  // Read back the EEPROM data
   eeprom_test_data = EEPROM_ReadByte(0x00);
   /* USER CODE END 2 */
 
@@ -143,8 +141,8 @@ int main(void)
     Check_Button();
     
     // Process CAN messages and errors
-    CAN_Handler_Process();
-    
+    //CAN_Handler_Process();
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

@@ -3,6 +3,7 @@
 
 extern I2C_HandleTypeDef hi2c1;
 
+uint16_t lastvalue;
 void MCP4725_Write(uint16_t value)
 {
     // Ensure value is within 12-bit range
@@ -12,7 +13,7 @@ void MCP4725_Write(uint16_t value)
     packet[0] = MCP4725_CMD_WRITEDAC;
     packet[1] = value / 16;        // Upper data bits (D11.D10.D9.D8.D7.D6.D5.D4)
     packet[2] = (value % 16) << 4; // Lower data bits (D3.D2.D1.D0.x.x.x.x)
-
+    lastvalue = value ;
     // Send the data over I2C
     HAL_I2C_Master_Transmit(&hi2c1, MCP4725_ADDR, packet, 3, HAL_MAX_DELAY);
 }
