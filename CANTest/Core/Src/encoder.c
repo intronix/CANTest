@@ -25,6 +25,9 @@ static uint8_t buzzerActive = 0;
 static uint8_t isCalibrationBuzz = 0;  // Flag for calibration buzz pattern
 static uint8_t buzzOff = 0;  // Flag for buzz off state
 
+// External variables
+extern uint8_t outputLedState;  // LED state from led_control.c
+
 void Encoder_Init(TIM_HandleTypeDef *htim)
 {
     encoderTimer = htim;
@@ -124,6 +127,12 @@ static void Start_Buzz_Sequence(int16_t position)
 {
     static uint32_t lastBuzzTriggerTime = 0;
     uint32_t currentTime = HAL_GetTick();
+    
+    // Only proceed if LED is on in normal mode, or always proceed in calibration mode
+    if (encoderMode == NORMAL_MODE && !outputLedState)
+    {
+        return;
+    }
     
     // Debounce buzzer triggers - prevent retriggering within 500ms
     if (currentTime - lastBuzzTriggerTime < 500)
