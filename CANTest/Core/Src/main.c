@@ -170,7 +170,7 @@ int main(void)
         // Normal operation mode
         Encoder_Update();
         Check_Button();
-        //CAN_Handler_Process();
+        CAN_Handler_Process();
     }
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */

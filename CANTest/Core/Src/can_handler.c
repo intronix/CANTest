@@ -13,6 +13,8 @@ uint32_t rxMessageCounter = 0;
 uint32_t txMessageCounter = 0;
 uint8_t messageReceived = 0;
 static uint32_t lastTxTime = 0;
+static uint32_t lastBlinkTime = 0;  // For LED blinking
+static uint8_t ledState = 0;        // Track LED state
 
 void CAN_Handler_Init(void)
 {
@@ -35,6 +37,8 @@ void CAN_Handler_Init(void)
     txMessageCounter = 0;
     messageReceived = 0;
     lastTxTime = 0;
+    lastBlinkTime = 0;
+    ledState = 0;
     
     // Calculate and store initial baud rate
     CAN_Calculate_Baud_Rate();
@@ -83,14 +87,26 @@ HAL_StatusTypeDef CAN_Start(void)
 
 void CAN_Handler_Process(void)
 {
+    uint32_t currentTime = HAL_GetTick();
     uint32_t errorStatus = HAL_CAN_GetError(&hcan);
+    
     if(messageReceived)
     {
-        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_15);  // Toggle LED
-        HAL_Delay(500);  // 500ms delay for message received indication
-        messageReceived = 0; // Clear message received flag
-        txErrorCounter = 0;
-        rxErrorCounter = 0;
+        // Non-blocking LED blink
+        if (currentTime - lastBlinkTime >= 500)  // 500ms interval
+        {
+            HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_15);  // Toggle LED
+            lastBlinkTime = currentTime;
+            ledState = !ledState;
+            
+            // If LED has completed one blink cycle (ON->OFF)
+            if (ledState == 0)
+            {
+                messageReceived = 0; // Clear message received flag
+                txErrorCounter = 0;
+                rxErrorCounter = 0;
+            }
+        }
     }
     
     // Send periodic message
