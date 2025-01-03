@@ -148,10 +148,6 @@ int main(void)
       longPressDetected = 0;
   }
   
-  // Read back the EEPROM data
-  eeprom_test_data = EEPROM_ReadWord(0x00);
-  
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
