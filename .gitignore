@@ -1,2 +1,4 @@
 CANTest/Debug/*
 CANTestMaster/Debug/*
+CANTest/STM32CANTest Debug.launch
+CANTestMaster/MasterBoardCANTest.launch
