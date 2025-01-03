@@ -5,7 +5,8 @@
 
 // Encoder physical properties
 #define ENCODER_STEPS 20        // Number of physical steps per rotation
-#define ENCODER_COUNTS_PER_STEP 4  // Timer counts per encoder step
+#define ENCODER_COUNTS_PER_STEP 1  // Timer counts per encoder step
+#define ENCODER_FULL_ROTATION (ENCODER_STEPS * ENCODER_COUNTS_PER_STEP)  // Total counts for full rotation
 
 // DAC value range
 #define DAC_MIN_VALUE 600   // Minimum DAC value for LED
